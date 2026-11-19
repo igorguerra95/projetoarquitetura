@@ -34,6 +34,9 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  actions: write
+  id-token: write
 
 concurrency:
   group: "automation-pages-setup"
@@ -42,6 +45,7 @@ concurrency:
 jobs:
   configure:
     name: Configurar Repositórios GitHub Pages
+    if: github.event_name != 'schedule' || github.event.repository.name == 'modelo-previas'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repositório central
@@ -52,9 +56,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Executar Automação com PAGES_AUTOMATION_TOKEN
+      - name: Executar Automação de Configuração do GitHub Pages
         env:
           PAGES_AUTOMATION_TOKEN: ${{ secrets.PAGES_AUTOMATION_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           TARGET_REPO: ${{ inputs.target_repo || github.event.client_payload.repo || '' }}
           TARGET_OWNER: ${{ inputs.target_owner || github.event.client_payload.owner || '' }}
         run: node scripts/setup-github-repo.mjs

@@ -12,18 +12,26 @@
  *  6. Evita reconfiguração desnecessária de repositórios já ativos
  */
 
-const GITHUB_TOKEN = process.env.PAGES_AUTOMATION_TOKEN;
+const AUTOMATION_TOKEN = (process.env.PAGES_AUTOMATION_TOKEN || '').trim();
+const FALLBACK_GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
+const CURRENT_REPOSITORY = (process.env.GITHUB_REPOSITORY || '').trim();
+const [CURRENT_OWNER = '', CURRENT_REPO = ''] = CURRENT_REPOSITORY.split('/');
+const IS_CENTRAL_REPO = CURRENT_REPO === 'modelo-previas';
+
+const ACTIVE_TOKEN = AUTOMATION_TOKEN || FALLBACK_GITHUB_TOKEN;
+const USING_FALLBACK_TOKEN = !AUTOMATION_TOKEN && Boolean(FALLBACK_GITHUB_TOKEN);
+
 const TARGET_REPO = (process.env.TARGET_REPO || '').trim();
 const TARGET_OWNER = (process.env.TARGET_OWNER || '').trim();
 
-if (!GITHUB_TOKEN) {
-  console.error('❌ ERRO: O segredo PAGES_AUTOMATION_TOKEN não foi encontrado nas variáveis de ambiente.');
-  console.error('   Certifique-se de que o segredo foi cadastrado no repositório central modelo-previas.');
+if (!ACTIVE_TOKEN) {
+  console.error('❌ ERRO: Nenhum token encontrado (PAGES_AUTOMATION_TOKEN ou GITHUB_TOKEN).');
+  console.error('   Configure o segredo PAGES_AUTOMATION_TOKEN no repositório central modelo-previas ou execute dentro do GitHub Actions.');
   process.exit(1);
 }
 
 const headers = {
-  'Authorization': `Bearer ${GITHUB_TOKEN}`,
+  'Authorization': `Bearer ${ACTIVE_TOKEN}`,
   'Accept': 'application/vnd.github+json',
   'X-GitHub-Api-Version': '2022-11-28',
   'User-Agent': 'modelo-previas-automator'
@@ -98,9 +106,9 @@ async function checkDeployWorkflowExists(owner, repo, branch) {
   return res.ok;
 }
 
-async function configureRepository(owner, repo) {
+async function configureRepository(owner, repo, { fallbackMode = false } = {}) {
   console.log(`\n======================================================`);
-  console.log(`🚀 Verificando repositório: ${owner}/${repo}`);
+  console.log(`🚀 Verificando repositório: ${owner}/${repo}${fallbackMode ? ' (modo repositório local)' : ''}`);
   console.log(`======================================================`);
 
   const results = {
@@ -159,50 +167,55 @@ async function configureRepository(owner, repo) {
 
   let pagesJustActivated = false;
 
-  // 4. Habilitar GitHub Actions no repositório
-  try {
-    const actionsRes = await ghRequest(`/repos/${owner}/${repo}/actions/permissions`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        enabled: true,
-        allowed_actions: 'all'
-      })
-    });
+  // 4 e 5. Habilitar GitHub Actions e permissões de workflow (requer PAT no repositório central)
+  if (fallbackMode) {
+    console.log(`ℹ️ Modo repositório local (GITHUB_TOKEN): permissões de workflow são declaradas diretamente em .github/workflows/deploy.yml.`);
+    results.actionsEnabled = true;
+    results.workflowPermissionsSet = true;
+  } else {
+    try {
+      const actionsRes = await ghRequest(`/repos/${owner}/${repo}/actions/permissions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: true,
+          allowed_actions: 'all'
+        })
+      });
 
-    if (actionsRes.ok || actionsRes.status === 204) {
-      console.log(`✅ GitHub Actions habilitado com sucesso.`);
-      results.actionsEnabled = true;
-    } else {
-      const warn = `Não foi possível alterar permissão geral do Actions (HTTP ${actionsRes.status}): ${JSON.stringify(actionsRes.data)}`;
-      console.warn(`⚠️ ${warn}`);
-      results.errors.push(warn);
+      if (actionsRes.ok || actionsRes.status === 204) {
+        console.log(`✅ GitHub Actions habilitado com sucesso.`);
+        results.actionsEnabled = true;
+      } else {
+        const warn = `Não foi possível alterar permissão geral do Actions (HTTP ${actionsRes.status}): ${JSON.stringify(actionsRes.data)}`;
+        console.warn(`⚠️ ${warn}`);
+        results.errors.push(warn);
+      }
+    } catch (err) {
+      results.errors.push(`Erro ao habilitar Actions: ${err.message}`);
     }
-  } catch (err) {
-    results.errors.push(`Erro ao habilitar Actions: ${err.message}`);
-  }
 
-  // 5. Configurar permissões de workflow para "Read and write permissions"
-  try {
-    const wfPermRes = await ghRequest(`/repos/${owner}/${repo}/actions/permissions/workflow`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        default_workflow_permissions: 'write',
-        can_approve_pull_request_reviews: true
-      })
-    });
+    try {
+      const wfPermRes = await ghRequest(`/repos/${owner}/${repo}/actions/permissions/workflow`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          default_workflow_permissions: 'write',
+          can_approve_pull_request_reviews: true
+        })
+      });
 
-    if (wfPermRes.ok || wfPermRes.status === 204) {
-      console.log(`✅ Permissões de Workflow configuradas para "Read and write permissions".`);
-      results.workflowPermissionsSet = true;
-    } else {
-      const warn = `Aviso ao configurar permissões de workflow (HTTP ${wfPermRes.status}): ${JSON.stringify(wfPermRes.data)}`;
-      console.warn(`⚠️ ${warn}`);
-      results.errors.push(warn);
+      if (wfPermRes.ok || wfPermRes.status === 204) {
+        console.log(`✅ Permissões de Workflow configuradas para "Read and write permissions".`);
+        results.workflowPermissionsSet = true;
+      } else {
+        const warn = `Aviso ao configurar permissões de workflow (HTTP ${wfPermRes.status}): ${JSON.stringify(wfPermRes.data)}`;
+        console.warn(`⚠️ ${warn}`);
+        results.errors.push(warn);
+      }
+    } catch (err) {
+      results.errors.push(`Erro ao configurar permissões de workflow: ${err.message}`);
     }
-  } catch (err) {
-    results.errors.push(`Erro ao configurar permissões de workflow: ${err.message}`);
   }
 
   // 6. Configurar GitHub Pages para build_type: "workflow"
@@ -238,6 +251,8 @@ async function configureRepository(owner, repo) {
         console.log(`✅ GitHub Pages ativado com sucesso para publicação via GitHub Actions!`);
         results.pagesConfigured = true;
         pagesJustActivated = true;
+      } else if (fallbackMode && createPagesRes.status === 403) {
+        console.log(`ℹ️ O GITHUB_TOKEN delegará a ativação do GitHub Pages ao workflow deploy.yml (configure-pages com enablement: true).`);
       } else {
         const errDetail = JSON.stringify(createPagesRes.data);
         let msg = `Falha ao ativar GitHub Pages (HTTP ${createPagesRes.status}): ${errDetail}`;
@@ -278,6 +293,8 @@ async function configureRepository(owner, repo) {
         console.log(`✅ GitHub Pages já está configurado como "workflow".`);
         results.pagesConfigured = true;
       }
+    } else if (fallbackMode && pagesCheck.status === 403) {
+      console.log(`ℹ️ Status do Pages será verificado e ativado diretamente pelo workflow deploy.yml.`);
     } else {
       const errMsg = `Erro ao consultar status do Pages (HTTP ${pagesCheck.status}): ${JSON.stringify(pagesCheck.data)}`;
       console.error(`❌ ${errMsg}`);
@@ -323,26 +340,40 @@ async function main() {
   console.log(`🤖 AUTOMAÇÃO DE REPOSITÓRIOS GITHUB PAGES (modelo-previas)`);
   console.log(`======================================================`);
 
-  const authenticatedUser = await getAuthenticatedUser();
-  console.log(`👤 Usuário autenticado pelo token: ${authenticatedUser}`);
-
-  let owner = TARGET_OWNER || authenticatedUser;
-  console.log(`🎯 Proprietário alvo: ${owner}`);
-
   const summary = [];
 
-  if (TARGET_REPO) {
-    console.log(`🎯 Modo Específico: Configurando repositório "${owner}/${TARGET_REPO}"`);
-    const res = await configureRepository(owner, TARGET_REPO);
+  if (USING_FALLBACK_TOKEN) {
+    if (IS_CENTRAL_REPO || !CURRENT_OWNER || !CURRENT_REPO) {
+      console.log(`ℹ️ Segredo PAGES_AUTOMATION_TOKEN não configurado neste repositório.`);
+      console.log(`   Para varredura automática de múltiplos repositórios a partir de modelo-previas, adicione PAGES_AUTOMATION_TOKEN em Settings -> Secrets and variables -> Actions.`);
+      return;
+    }
+
+    const targetOwner = TARGET_OWNER || CURRENT_OWNER;
+    const targetRepo = TARGET_REPO || CURRENT_REPO;
+    console.log(`ℹ️ PAGES_AUTOMATION_TOKEN não definido neste repositório derivado. Usando GITHUB_TOKEN para "${targetOwner}/${targetRepo}".`);
+    const res = await configureRepository(targetOwner, targetRepo, { fallbackMode: true });
     summary.push(res);
   } else {
-    console.log(`🌐 Modo Descoberta Automática: Localizando novos repositórios de "${owner}"...`);
-    const candidates = await listCandidateRepositories(owner, authenticatedUser);
-    console.log(`📋 Repositórios recentes encontrados: ${candidates.length}`);
+    const authenticatedUser = await getAuthenticatedUser();
+    console.log(`👤 Usuário autenticado pelo token: ${authenticatedUser}`);
 
-    for (const repo of candidates) {
-      const res = await configureRepository(owner, repo.name);
+    let owner = TARGET_OWNER || authenticatedUser;
+    console.log(`🎯 Proprietário alvo: ${owner}`);
+
+    if (TARGET_REPO) {
+      console.log(`🎯 Modo Específico: Configurando repositório "${owner}/${TARGET_REPO}"`);
+      const res = await configureRepository(owner, TARGET_REPO);
       summary.push(res);
+    } else {
+      console.log(`🌐 Modo Descoberta Automática: Localizando novos repositórios de "${owner}"...`);
+      const candidates = await listCandidateRepositories(owner, authenticatedUser);
+      console.log(`📋 Repositórios recentes encontrados: ${candidates.length}`);
+
+      for (const repo of candidates) {
+        const res = await configureRepository(owner, repo.name);
+        summary.push(res);
+      }
     }
   }
 
