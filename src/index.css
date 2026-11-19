@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+:root {
+  --background: 210 20% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --surface-subtle: 214 18% 94%;
+  --primary: 217 19% 27%;
+  --primary-foreground: 210 20% 98%;
+  --secondary: 222 47% 11%;
+  --secondary-foreground: 210 20% 98%;
+  --muted: 214 16% 92%;
+  --muted-foreground: 217 16% 40%;
+  --border: 215 18% 86%;
+  --ring: 217 19% 27%;
+  --whatsapp: 142 64% 32%;
+  --whatsapp-foreground: 0 0% 100%;
+
+  --gradient-canvas: linear-gradient(180deg, hsl(210 20% 98%) 0%, hsl(214 18% 95%) 100%);
+  --gradient-architectural: linear-gradient(135deg, hsl(222 47% 11%) 0%, hsl(217 19% 27%) 100%);
+  --shadow-hairline: 0 1px 2px hsl(222 47% 11% / 0.04);
+  --shadow-card: 0 10px 30px -14px hsl(222 47% 11% / 0.12), 0 2px 6px -2px hsl(222 47% 11% / 0.05);
+  --shadow-elevated: 0 22px 48px -16px hsl(222 47% 11% / 0.2), 0 6px 16px -6px hsl(222 47% 11% / 0.08);
+}
+
+@theme inline {
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Lato', system-ui, -apple-system, sans-serif;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-surface-subtle: hsl(var(--surface-subtle));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-ring: hsl(var(--ring));
+  --color-whatsapp: hsl(var(--whatsapp));
+  --color-whatsapp-foreground: hsl(var(--whatsapp-foreground));
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    scroll-padding-top: 5.5rem;
+  }
+
+  body {
+    min-height: 100vh;
+    background-image: var(--gradient-canvas);
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+}
+
+.architectural-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
+}
+
+.shadow-card-subtle {
+  box-shadow: var(--shadow-card);
+}
+
+.shadow-card-elevated {
+  box-shadow: var(--shadow-elevated);
+}
+
+.bg-architectural-gradient {
+  background-image: var(--gradient-architectural);
+}
+
+@keyframes whatsapp-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  70% {
+    transform: scale(1.38);
+    opacity: 0;
+  }
+}
+
+.animate-whatsapp-pulse {
+  animation: whatsapp-pulse 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-whatsapp-pulse {
+    animation: none;
+    opacity: 0;
+  }
+}
